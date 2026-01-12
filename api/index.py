@@ -9,11 +9,9 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'backend'))
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from mangum import Mangum
 
 # Import routes from backend
 from api.routes import router
-from api.models import *
 
 # Create FastAPI app for Vercel
 app = FastAPI(
@@ -41,5 +39,6 @@ async def health_check():
     return {"status": "healthy", "service": "pptx2pdf-accessible"}
 
 
-# Vercel handler
+# Vercel serverless handler
+from mangum import Mangum
 handler = Mangum(app, lifespan="off")
