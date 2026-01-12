@@ -35,18 +35,14 @@ function App() {
     reset,
   } = useConversion();
 
-  // Poll for job status during analysis/conversion
+  // Poll for job status during conversion (analysis is now synchronous)
   useEffect(() => {
-    if (!jobId || !['analyzing', 'converting'].includes(step)) return;
+    if (!jobId || step !== 'converting') return;
 
     const interval = setInterval(async () => {
       const status = await fetchJobStatus(jobId);
 
-      if (status.status === 'analyzed') {
-        await fetchSlides(jobId);
-        await fetchReport(jobId);
-        setStep('edit');
-      } else if (status.status === 'complete') {
+      if (status.status === 'complete') {
         setStep('complete');
       } else if (status.status === 'error') {
         setStep('upload');
@@ -54,13 +50,22 @@ function App() {
     }, 1000);
 
     return () => clearInterval(interval);
-  }, [jobId, step, fetchJobStatus, fetchSlides, fetchReport]);
+  }, [jobId, step, fetchJobStatus]);
 
   const handleUpload = useCallback(async (file: File) => {
-    const id = await uploadFile(file);
-    setStep('analyzing');
-    await startAnalysis(id);
-  }, [uploadFile, startAnalysis]);
+    try {
+      const id = await uploadFile(file);
+      setStep('analyzing');
+
+      // Analysis is now synchronous
+      await startAnalysis(id);
+      await fetchSlides(id);
+      await fetchReport(id);
+      setStep('edit');
+    } catch (err) {
+      setStep('upload');
+    }
+  }, [uploadFile, startAnalysis, fetchSlides, fetchReport]);
 
   const handleUpdateAltText = useCallback(async (elementId: string, slideNumber: number, altText: string, isDecorative: boolean) => {
     if (!jobId) return;
@@ -86,7 +91,12 @@ function App() {
   const handleConvert = useCallback(async () => {
     if (!jobId) return;
     setStep('converting');
-    await startConversion(jobId, includeSpeakerNotes);
+    try {
+      await startConversion(jobId, includeSpeakerNotes);
+      setStep('complete');
+    } catch (err) {
+      setStep('edit');
+    }
   }, [jobId, startConversion, includeSpeakerNotes]);
 
   const handleDownload = useCallback(() => {

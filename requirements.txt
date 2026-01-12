@@ -1,0 +1,21 @@
+# FastAPI and server
+fastapi==0.109.0
+mangum==0.17.0
+python-multipart==0.0.6
+
+# PPTX Processing
+python-pptx==0.6.23
+Pillow==10.2.0
+
+# PDF Generation
+reportlab==4.0.8
+pikepdf==8.11.2
+
+# AI Integration
+anthropic==0.18.1
+
+# Language Detection
+langdetect==1.0.9
+
+# Utilities
+aiofiles==23.2.1

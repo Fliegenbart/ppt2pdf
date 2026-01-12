@@ -52,13 +52,15 @@ export function useConversion() {
     setError(null);
 
     try {
-      await axios.post(`${API_BASE}/analyze`, {
+      const response = await axios.post(`${API_BASE}/analyze`, {
         job_id: id,
         generate_alt_text: true,
         analyze_reading_order: true,
         check_contrast: true,
         detect_languages: true,
       });
+      // Analysis completes synchronously on Vercel
+      return response.data;
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Analysis failed';
       setError(message);
@@ -112,11 +114,13 @@ export function useConversion() {
     setError(null);
 
     try {
-      await axios.post(`${API_BASE}/convert`, {
+      const response = await axios.post(`${API_BASE}/convert`, {
         job_id: id,
         include_speaker_notes: includeSpeakerNotes,
         pdf_ua_compliant: true,
       });
+      // Conversion completes synchronously on Vercel
+      return response.data;
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Conversion failed';
       setError(message);

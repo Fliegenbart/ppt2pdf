@@ -1,13 +1,13 @@
 """
 API Routes - FastAPI endpoints for the PPTX to PDF converter.
+Optimized for Vercel serverless deployment.
 """
 import os
 import uuid
-import asyncio
 from typing import Optional
-from fastapi import APIRouter, UploadFile, File, HTTPException, BackgroundTasks
-from fastapi.responses import FileResponse
-import aiofiles
+from fastapi import APIRouter, UploadFile, File, HTTPException
+from fastapi.responses import FileResponse, Response
+import base64
 
 from api.models import (
     UploadResponse, AnalysisRequest, ConversionRequest, UpdateRequest,
@@ -24,10 +24,9 @@ router = APIRouter()
 jobs: dict[str, ConversionJob] = {}
 presentations: dict[str, Presentation] = {}
 
-# Directories
-BASE_DIR = os.path.dirname(os.path.dirname(__file__))
-UPLOAD_DIR = os.path.join(BASE_DIR, "..", "uploads")
-OUTPUT_DIR = os.path.join(BASE_DIR, "..", "outputs")
+# Use /tmp for Vercel serverless (only writable directory)
+UPLOAD_DIR = "/tmp/uploads"
+OUTPUT_DIR = "/tmp/outputs"
 
 # Initialize components
 parser = PPTXParser()
@@ -60,9 +59,9 @@ async def upload_file(file: UploadFile = File(...)):
     os.makedirs(UPLOAD_DIR, exist_ok=True)
     file_path = os.path.join(UPLOAD_DIR, f"{job_id}.pptx")
 
-    async with aiofiles.open(file_path, 'wb') as out_file:
-        content = await file.read()
-        await out_file.write(content)
+    content = await file.read()
+    with open(file_path, 'wb') as out_file:
+        out_file.write(content)
 
     # Create job
     job = ConversionJob(
@@ -95,7 +94,7 @@ async def upload_file(file: UploadFile = File(...)):
 
 
 @router.post("/analyze")
-async def analyze_presentation(request: AnalysisRequest, background_tasks: BackgroundTasks):
+async def analyze_presentation(request: AnalysisRequest):
     """Analyze presentation with AI for accessibility improvements."""
     job_id = request.job_id
 
@@ -108,34 +107,9 @@ async def analyze_presentation(request: AnalysisRequest, background_tasks: Backg
     job = jobs[job_id]
     presentation = presentations[job_id]
 
-    # Start analysis in background
-    background_tasks.add_task(
-        run_analysis,
-        job_id,
-        presentation,
-        request.generate_alt_text,
-        request.analyze_reading_order,
-        request.check_contrast,
-        request.detect_languages,
-    )
-
     job.status = "analyzing"
     job.progress = 35.0
     job.current_step = "Starting AI analysis..."
-
-    return {"job_id": job_id, "message": "Analysis started"}
-
-
-async def run_analysis(
-    job_id: str,
-    presentation: Presentation,
-    generate_alt_text: bool,
-    analyze_reading_order: bool,
-    check_contrast: bool,
-    detect_languages: bool,
-):
-    """Run AI analysis on presentation."""
-    job = jobs[job_id]
 
     try:
         analyzer = get_ai_analyzer()
@@ -144,12 +118,12 @@ async def run_analysis(
             job.current_step = "Running AI analysis..."
             job.progress = 40.0
 
-            # Run AI analysis
+            # Run AI analysis synchronously for serverless
             await analyzer.analyze_presentation(
                 presentation,
-                generate_alt_text=generate_alt_text,
-                analyze_reading_order=analyze_reading_order,
-                detect_languages=detect_languages,
+                generate_alt_text=request.generate_alt_text,
+                analyze_reading_order=request.analyze_reading_order,
+                detect_languages=request.detect_languages,
             )
 
             job.progress = 70.0
@@ -167,6 +141,9 @@ async def run_analysis(
     except Exception as e:
         job.status = "error"
         job.error_message = f"Analysis failed: {str(e)}"
+        raise HTTPException(status_code=500, detail=str(e))
+
+    return {"job_id": job_id, "message": "Analysis complete", "status": "analyzed"}
 
 
 @router.get("/job/{job_id}")
@@ -246,7 +223,6 @@ async def get_slides(job_id: str):
                 elem_data["alt_text_generated"] = elem.alt_text_generated
                 elem_data["is_decorative"] = elem.is_decorative
                 elem_data["content_type"] = elem.content_type.value
-                # Include thumbnail URL (could be base64 or endpoint)
                 elem_data["has_image"] = bool(elem.image_base64)
 
             if elem.element_type.value == "chart" and elem.chart_data:
@@ -297,7 +273,6 @@ async def update_elements(job_id: str, request: UpdateRequest):
     updated = []
 
     for update in request.updates:
-        # Find the element
         for slide in presentation.slides:
             if slide.slide_number != update.slide_number:
                 continue
@@ -306,10 +281,9 @@ async def update_elements(job_id: str, request: UpdateRequest):
                 if elem.id != update.element_id:
                     continue
 
-                # Apply updates
                 if update.alt_text is not None:
                     elem.alt_text = update.alt_text
-                    elem.alt_text_generated = False  # Mark as manually edited
+                    elem.alt_text_generated = False
 
                 if update.reading_order is not None:
                     elem.reading_order = update.reading_order
@@ -339,7 +313,7 @@ async def get_accessibility_report(job_id: str):
 
 
 @router.post("/convert")
-async def convert_to_pdf(request: ConversionRequest, background_tasks: BackgroundTasks):
+async def convert_to_pdf(request: ConversionRequest):
     """Convert the analyzed presentation to accessible PDF."""
     job_id = request.job_id
 
@@ -352,41 +326,20 @@ async def convert_to_pdf(request: ConversionRequest, background_tasks: Backgroun
     job = jobs[job_id]
     presentation = presentations[job_id]
 
-    # Start conversion in background
-    background_tasks.add_task(
-        run_conversion,
-        job_id,
-        presentation,
-        request.include_speaker_notes,
-        request.pdf_ua_compliant,
-    )
-
     job.status = "converting"
     job.progress = 85.0
     job.current_step = "Generating accessible PDF..."
-
-    return {"job_id": job_id, "message": "PDF conversion started"}
-
-
-async def run_conversion(
-    job_id: str,
-    presentation: Presentation,
-    include_speaker_notes: bool,
-    pdf_ua_compliant: bool,
-):
-    """Run PDF conversion."""
-    job = jobs[job_id]
 
     try:
         os.makedirs(OUTPUT_DIR, exist_ok=True)
         output_path = os.path.join(OUTPUT_DIR, f"{job_id}.pdf")
 
-        # Generate PDF
+        # Generate PDF synchronously
         pdf_generator.generate(
             presentation,
             output_path,
-            include_speaker_notes=include_speaker_notes,
-            pdf_ua_compliant=pdf_ua_compliant,
+            include_speaker_notes=request.include_speaker_notes,
+            pdf_ua_compliant=request.pdf_ua_compliant,
         )
 
         job.status = "complete"
@@ -397,6 +350,9 @@ async def run_conversion(
     except Exception as e:
         job.status = "error"
         job.error_message = f"PDF generation failed: {str(e)}"
+        raise HTTPException(status_code=500, detail=str(e))
+
+    return {"job_id": job_id, "message": "PDF conversion complete", "status": "complete"}
 
 
 @router.get("/download/{job_id}")
@@ -422,10 +378,14 @@ async def download_pdf(job_id: str):
         original = presentations[job_id].filename
         filename = original.rsplit('.', 1)[0] + "_accessible.pdf"
 
-    return FileResponse(
-        job.output_path,
+    # Read file and return as response (for serverless compatibility)
+    with open(job.output_path, 'rb') as f:
+        pdf_content = f.read()
+
+    return Response(
+        content=pdf_content,
         media_type="application/pdf",
-        filename=filename,
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'}
     )
 
 
@@ -443,7 +403,6 @@ async def delete_job(job_id: str):
         if os.path.exists(path):
             os.remove(path)
 
-    # Remove from memory
     if job_id in jobs:
         del jobs[job_id]
     if job_id in presentations:
