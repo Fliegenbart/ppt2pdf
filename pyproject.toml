@@ -1,0 +1,78 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "accessible-pptx-to-pdf"
+version = "0.1.0"
+description = "Convert PowerPoint to accessible PDFs with local AI alt-text generation"
+readme = "README.md"
+license = {text = "MIT"}
+requires-python = ">=3.10"
+authors = [
+    {name = "David", email = "david@example.com"}
+]
+keywords = ["accessibility", "pdf", "pptx", "powerpoint", "a11y", "pdf-ua", "bitv"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Office/Business",
+    "Topic :: Multimedia :: Graphics :: Graphics Conversion",
+]
+
+dependencies = [
+    "python-pptx>=0.6.21",
+    "pikepdf>=8.0.0",
+    "Pillow>=10.0.0",
+    "requests>=2.28.0",
+    "click>=8.0.0",
+    "rich>=13.0.0",
+    "tomli>=2.0.0;python_version<'3.11'",  # TOML support for Python 3.10
+    "pyyaml>=6.0.0",  # YAML config file support
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0.0",
+    "pytest-cov>=4.0.0",
+    "black>=23.0.0",
+    "ruff>=0.1.0",
+    "mypy>=1.0.0",
+    "types-requests>=2.28.0",
+]
+
+[project.scripts]
+a11y-pdf = "src.cli:main"
+
+[project.urls]
+Homepage = "https://github.com/yourusername/accessible-pptx-to-pdf"
+Issues = "https://github.com/yourusername/accessible-pptx-to-pdf/issues"
+
+[tool.setuptools.packages.find]
+where = ["."]
+
+[tool.black]
+line-length = 100
+target-version = ["py310"]
+
+[tool.ruff]
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "N", "W", "UP"]
+ignore = ["E501", "N806"]  # N806: Allow XML element names like nvPicPr, cNvPr
+
+[tool.mypy]
+python_version = "3.10"
+warn_return_any = true
+warn_unused_configs = true
+ignore_missing_imports = true
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
